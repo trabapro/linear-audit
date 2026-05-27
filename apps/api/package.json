@@ -1,0 +1,16 @@
+{
+  "name": "@linear-audit/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "build": "echo 'No build step — bun runs TS directly'",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@linear-audit/shared": "workspace:*",
+    "hono": "^4.6.0"
+  }
+}

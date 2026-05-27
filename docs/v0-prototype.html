@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Linear Audit · Swipe Edition</title>
+<style>
+  :root {
+    --bg-grad: radial-gradient(at 20% 20%, #ff7eb3 0%, transparent 50%),
+               radial-gradient(at 80% 30%, #ffb86c 0%, transparent 50%),
+               radial-gradient(at 50% 90%, #8b5cf6 0%, transparent 50%),
+               #0f0e1a;
+    --card-bg: #ffffff;
+    --ink: #1a1a2e;
+    --muted: #6b7280;
+    --accent: #ff4d8d;
+    --done: #10b981;
+    --pending: #f59e0b;
+    --cat-a: #ec4899;   /* status granularity */
+    --cat-b: #06b6d4;   /* automation */
+    --cat-c: #fbbf24;   /* bug */
+    --cat-d: #84cc16;   /* filtering */
+    --cat-e: #a78bfa;   /* first mile */
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+    color: #fff;
+    background: var(--bg-grad);
+    background-attachment: fixed;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 24px;
+    backdrop-filter: blur(20px);
+    background: rgba(15,14,26,0.4);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    z-index: 5;
+  }
+  header h1 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+  header h1 .heart { color: #ff4d8d; }
+  .meta { display:flex; gap:12px; align-items:center; font-size:13px; color:#cbd5e1; }
+  .meta button {
+    background: rgba(255,255,255,0.08); color:#fff; border:none;
+    padding: 6px 12px; border-radius:8px; font-size:12px; cursor:pointer;
+    font-weight:600;
+  }
+  .meta button:hover { background: rgba(255,255,255,0.18); }
+  .progress-bar {
+    width: 140px; height: 6px; background: rgba(255,255,255,0.12); border-radius: 99px; overflow:hidden;
+  }
+  .progress-bar > div { height:100%; background: linear-gradient(90deg, #ff4d8d, #ffb86c); transition: width 0.3s; }
+
+  main {
+    flex: 1; position: relative;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 12px;
+  }
+
+  .deck {
+    position: relative; width: 100%; max-width: 460px; height: min(72vh, 660px);
+  }
+  .card {
+    position: absolute; inset: 0;
+    background: var(--card-bg); color: var(--ink);
+    border-radius: 22px;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.45), 0 4px 16px rgba(0,0,0,0.3);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    transform-origin: center bottom;
+    transition: transform 0.35s cubic-bezier(.2,.8,.2,1), opacity 0.35s;
+  }
+  .card.behind { transform: scale(0.94) translateY(14px); opacity: 0.6; pointer-events:none; }
+  .card.behind2 { transform: scale(0.88) translateY(28px); opacity: 0.3; pointer-events:none; }
+  .card.swipe-right { transform: translate(120%, -10%) rotate(18deg); opacity: 0; }
+  .card.swipe-left  { transform: translate(-120%, -10%) rotate(-18deg); opacity: 0; }
+
+  .rec-banner {
+    padding: 14px 18px;
+    color: #fff;
+    font-weight: 800; font-size: 13px;
+    display: flex; gap:8px; align-items:center; justify-content: space-between;
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .rec-banner.done    { background: linear-gradient(90deg, #10b981, #14b8a6); }
+  .rec-banner.moot    { background: linear-gradient(90deg, #6366f1, #8b5cf6); }
+  .rec-banner.pending { background: linear-gradient(90deg, #f59e0b, #ef4444); }
+  .rec-banner small { font-weight: 700; opacity: 0.9; text-transform: none; letter-spacing:0; font-size: 11px; }
+
+  .card-body {
+    flex: 1; overflow-y: auto; padding: 18px 22px 24px;
+  }
+  .card-body::-webkit-scrollbar { width: 6px; }
+  .card-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 99px; }
+
+  .id-row {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .ticket-id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; color: var(--muted); }
+  .chip {
+    font-size: 11px; font-weight: 700;
+    padding: 3px 9px; border-radius: 999px;
+    background: #eef2ff; color: #4338ca;
+  }
+  .chip.status-Todo        { background:#fef3c7; color:#92400e; }
+  .chip.status-Triage      { background:#fee2e2; color:#991b1b; }
+  .chip.status-Backlog     { background:#e5e7eb; color:#374151; }
+  .chip.status-InProgress  { background:#dbeafe; color:#1e40af; }
+  .chip.status-InReview    { background:#ede9fe; color:#6d28d9; }
+  .chip.prio-Urgent { background:#fecaca; color:#991b1b; }
+  .chip.prio-High   { background:#fed7aa; color:#9a3412; }
+  .chip.prio-Medium { background:#fde68a; color:#92400e; }
+  .chip.prio-Low    { background:#d1fae5; color:#065f46; }
+
+  h2.title {
+    font-size: 22px; font-weight: 800; line-height: 1.25;
+    margin: 6px 0 12px;
+    letter-spacing: -0.01em;
+  }
+  .assignee {
+    font-size: 12px; color: var(--muted); margin-bottom: 14px;
+  }
+  .rec-note {
+    background: #fffbea; border: 1px solid #fde68a; border-left: 3px solid #f59e0b;
+    padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.5;
+    margin-bottom: 16px;
+  }
+  .rec-note b { color: #92400e; }
+  .rec-note.done { background:#ecfdf5; border-color:#a7f3d0; border-left-color:#10b981; }
+  .rec-note.done b { color:#065f46; }
+  .rec-note.moot { background:#eef2ff; border-color:#c7d2fe; border-left-color:#6366f1; }
+  .rec-note.moot b { color:#4338ca; }
+
+  .scroll-hint {
+    text-align:center; color: var(--muted); font-size:11px;
+    padding: 6px 0 12px; opacity: 0.7;
+  }
+  .desc-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--muted); font-weight: 700; margin-bottom: 6px;
+  }
+  .desc {
+    font-size: 13px; color: #374151; line-height: 1.55;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .desc img { max-width: 100%; }
+  .linear-link {
+    display: inline-block; margin-top: 14px;
+    padding: 8px 14px; border-radius: 8px;
+    background: #5e6ad2; color: #fff; text-decoration: none;
+    font-size: 12px; font-weight: 600;
+  }
+
+  .controls {
+    margin-top: 18px;
+    display: flex; gap: 14px; align-items: center; justify-content: center;
+  }
+  .controls button {
+    border: none; cursor: pointer; padding: 14px 22px; border-radius: 14px;
+    font-weight: 700; font-size: 14px;
+    color: #fff;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+  }
+  .btn-left  { background: linear-gradient(135deg, #f59e0b, #ef4444); }
+  .btn-right { background: linear-gradient(135deg, #10b981, #14b8a6); }
+  .btn-skip  { background: rgba(255,255,255,0.12); color:#fff; }
+  .controls .kbd { font-size: 11px; opacity: 0.8; margin-left: 8px; }
+  .help {
+    margin-top: 10px; text-align:center; color: #cbd5e1; font-size: 12px;
+  }
+  .help kbd {
+    background: rgba(255,255,255,0.14); color:#fff; padding: 2px 7px; border-radius:6px;
+    font-family: inherit; font-size: 11px; font-weight: 700;
+  }
+
+  /* Category modal */
+  .modal-wrap {
+    position: fixed; inset: 0; background: rgba(8, 7, 18, 0.7);
+    display: none; align-items: center; justify-content: center;
+    z-index: 10; backdrop-filter: blur(8px);
+  }
+  .modal-wrap.show { display: flex; }
+  .modal {
+    background: #fff; color: var(--ink);
+    border-radius: 20px; padding: 24px; width: min(440px, 92vw);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+  }
+  .modal h3 { margin: 0 0 8px; font-size: 18px; }
+  .modal p { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
+  .cat-list { display: flex; flex-direction: column; gap: 8px; }
+  .cat-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; border-radius: 12px;
+    background: #f3f4f6; cursor: pointer; user-select: none;
+    border: 2px solid transparent;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .cat-item:hover { background: #e5e7eb; }
+  .cat-item.recommended { border-color: var(--accent); background: #fff5fb; }
+  .cat-item .num {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: #fff; color: var(--ink); display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 13px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  }
+  .cat-item .label { flex:1; font-weight: 600; font-size: 14px; }
+  .cat-item .badge {
+    width: 10px; height: 10px; border-radius: 99px;
+  }
+  .cat-item[data-cat="A"] .badge { background: var(--cat-a); }
+  .cat-item[data-cat="B"] .badge { background: var(--cat-b); }
+  .cat-item[data-cat="C"] .badge { background: var(--cat-c); }
+  .cat-item[data-cat="D"] .badge { background: var(--cat-d); }
+  .cat-item[data-cat="E"] .badge { background: var(--cat-e); }
+  .note-input {
+    margin-top: 14px;
+    width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 10px;
+    font-family: inherit; font-size: 13px; resize: vertical; min-height: 60px;
+  }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  .modal-actions button {
+    padding: 8px 14px; border-radius: 10px; border: none; cursor: pointer;
+    font-weight: 600; font-size: 13px;
+  }
+  .btn-confirm { background: var(--accent); color: #fff; }
+  .btn-cancel { background: #e5e7eb; color: var(--ink); }
+
+  /* Results screen */
+  .results {
+    display: none;
+    width: 100%; max-width: 1000px; margin: 0 auto;
+    color: #fff;
+  }
+  .results.show { display: block; }
+  .results h2 { margin: 8px 0 12px; }
+  .res-cols {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+    margin-top: 20px;
+  }
+  @media (max-width: 760px) { .res-cols { grid-template-columns: 1fr; } }
+  .res-col {
+    background: rgba(255,255,255,0.06);
+    border-radius: 16px; padding: 18px;
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.1);
+    max-height: 70vh; overflow-y: auto;
+  }
+  .res-col h3 { margin: 0 0 12px; font-size: 16px; }
+  .res-item {
+    background: rgba(255,255,255,0.06);
+    padding: 10px 12px; border-radius: 10px; margin-bottom: 8px;
+    display:flex; gap: 8px; align-items: flex-start;
+    border-left: 3px solid transparent;
+  }
+  .res-item[data-cat="A"] { border-left-color: var(--cat-a); }
+  .res-item[data-cat="B"] { border-left-color: var(--cat-b); }
+  .res-item[data-cat="C"] { border-left-color: var(--cat-c); }
+  .res-item[data-cat="D"] { border-left-color: var(--cat-d); }
+  .res-item[data-cat="E"] { border-left-color: var(--cat-e); }
+  .res-item .res-id { font-family: ui-monospace, monospace; font-size: 11px; color: #fcd34d; font-weight: 700; }
+  .res-item .res-title { font-size: 13px; margin-top: 2px; }
+  .res-item .res-note { font-size: 11px; color: #cbd5e1; margin-top: 4px; font-style: italic; }
+  .res-item .res-cat { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; margin-top: 4px; }
+  .results-toolbar { display:flex; gap:10px; margin-top: 16px; }
+  .results-toolbar button {
+    padding: 10px 16px; border-radius: 10px; border:none; cursor:pointer;
+    background: rgba(255,255,255,0.14); color:#fff; font-weight:700; font-size: 13px;
+  }
+  .results-toolbar button.primary { background: var(--accent); }
+
+  .empty-deck {
+    text-align: center; color: #fff;
+    padding: 40px;
+  }
+  .empty-deck h2 { font-size: 32px; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: rgba(15,14,26,0.92); color:#fff;
+    padding: 10px 18px; border-radius: 99px; font-size: 13px; font-weight: 600;
+    border: 1px solid rgba(255,255,255,0.12);
+    opacity: 0; transition: opacity 0.25s;
+    z-index: 20;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Linear Audit <span class="heart">💛</span></h1>
+  <div class="meta">
+    <div class="progress-bar"><div id="progressFill" style="width:0%"></div></div>
+    <span id="counter">0 / 0</span>
+    <button id="undoBtn" title="Undo (U)">↶ Undo</button>
+  </div>
+</header>
+
+<main>
+  <div id="deck" class="deck"></div>
+  <div class="controls">
+    <button class="btn-left"  onclick="swipe('left')">← Pending<span class="kbd">←</span></button>
+    <button class="btn-skip"  onclick="swipe('skip')">Skip<span class="kbd">S</span></button>
+    <button class="btn-right" onclick="swipe('right')">Done / Moot →<span class="kbd">→</span></button>
+  </div>
+  <div class="help">
+    <kbd>←</kbd> pending · <kbd>→</kbd> close · <kbd>↑</kbd><kbd>↓</kbd> scroll details · <kbd>U</kbd> undo · <kbd>S</kbd> skip · <kbd>1-5</kbd> pick category in modal
+  </div>
+
+  <div id="results" class="results">
+    <h2>✨ Audit complete</h2>
+    <p style="color:#cbd5e1; font-size: 14px;">Left swipes (keep, with your category) on the left. Right swipes (close) on the right. Use the buttons below to copy to clipboard.</p>
+    <div class="res-cols">
+      <div class="res-col">
+        <h3 id="pendingHeading">Pending</h3>
+        <div id="pendingList"></div>
+      </div>
+      <div class="res-col">
+        <h3 id="closeHeading">To close</h3>
+        <div id="closeList"></div>
+      </div>
+    </div>
+    <div class="results-toolbar">
+      <button class="primary" onclick="copyResults('md')">📋 Copy as Markdown</button>
+      <button onclick="copyResults('csv')">📋 Copy as CSV</button>
+      <button onclick="window.location.reload()">↻ Restart</button>
+    </div>
+  </div>
+</main>
+
+<!-- Category modal -->
+<div id="catModal" class="modal-wrap">
+  <div class="modal">
+    <h3>Categorize this ticket</h3>
+    <p id="catSubtitle">Press <kbd style="background:#e5e7eb;padding:1px 6px;border-radius:4px;font-size:11px;">1-5</kbd> or click. Recommended is highlighted.</p>
+    <div class="cat-list" id="catList">
+      <div class="cat-item" data-cat="A" onclick="pickCat('A')">
+        <div class="num">1</div>
+        <div class="badge"></div>
+        <div class="label">🎚️ Per-step status granularity</div>
+      </div>
+      <div class="cat-item" data-cat="B" onclick="pickCat('B')">
+        <div class="num">2</div>
+        <div class="badge"></div>
+        <div class="label">🤖 Automation / integration</div>
+      </div>
+      <div class="cat-item" data-cat="C" onclick="pickCat('C')">
+        <div class="num">3</div>
+        <div class="badge"></div>
+        <div class="label">🐛 Bug</div>
+      </div>
+      <div class="cat-item" data-cat="D" onclick="pickCat('D')">
+        <div class="num">4</div>
+        <div class="badge"></div>
+        <div class="label">🔍 Filtering / OCC</div>
+      </div>
+      <div class="cat-item" data-cat="E" onclick="pickCat('E')">
+        <div class="num">5</div>
+        <div class="badge"></div>
+        <div class="label">🔧 First mile / requirements setup</div>
+      </div>
+    </div>
+    <textarea id="noteInput" class="note-input" placeholder="Notes / edits (optional) — Enter to confirm, Esc to skip note"></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-confirm" onclick="confirmCat()">Confirm (⏎)</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+// =============================================================
+// Ticket data
+// =============================================================
+// rec: 'done' | 'moot' | 'pending'  (this is MY suggestion)
+// recCat (when rec=pending): A|B|C|D|E
+const CATS = {
+  A: { label: '🎚️ Per-step status granularity', color: 'var(--cat-a)' },
+  B: { label: '🤖 Automation / integration',    color: 'var(--cat-b)' },
+  C: { label: '🐛 Bug',                          color: 'var(--cat-c)' },
+  D: { label: '🔍 Filtering / OCC',              color: 'var(--cat-d)' },
+  E: { label: '🔧 First mile / requirements setup', color: 'var(--cat-e)' },
+};
+
+const TICKETS = [
+  // ============================================================
+  // LIKELY DONE / MOOT — quick right swipes
+  // ============================================================
+  {
+    id: 'ENG-19769',
+    title: 'Pipeline step filter shows workers from other steps',
+    status: 'Todo', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19769',
+    rec: 'done',
+    recNote: 'Likely fixed by ENG-19489 (only show workers in current pipeline step) which shipped 5/21. Verify in OCC then close.',
+    desc: "Filtering the worker table by a pipeline step is still showing workers from previous steps and workers who are eligible to start the step. Pipeline shows 9 workers completed a recruiter call but filtering by that step still shows all 23 workers.\n\nAlso appears related to general onboarding and other pipeline statuses."
+  },
+  {
+    id: 'ENG-19243',
+    title: 'Onsite endpoints reject External users',
+    status: 'In Review', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19243',
+    rec: 'done',
+    recNote: 'In Review since 5/8 — mentioned shipping in the 5/12 and 5/15 updates. Either already merged with stale state, or stuck. Verify and either close or unstick.',
+    desc: "Onsite endpoints reject External users (e.g. josh@ext.traba.work). Cascades into ~3 of the 5 reported onsite issues. Fix: expand acceptable actor list on onsite endpoints."
+  },
+  {
+    id: 'ENG-19695',
+    title: '[Restructure flows] Follow-up: EditFlowModal component for company prereqs tab',
+    status: 'Backlog', priority: 'High', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19695',
+    rec: 'moot',
+    recNote: 'Subsumed by ENG-19709 (Edit-flow modal PR 3/3 in the prereqs redesign). Close as duplicate.',
+    desc: "Follow-up from the ENG-19645 through ENG-19669 stack. The new flow editor UI was promoted out of PR 3 so the rest of the stack could land — this ticket captures the remaining UX work."
+  },
+
+  // ============================================================
+  // PER-STEP STATUS GRANULARITY (category A)
+  // ============================================================
+  {
+    id: 'ENG-18775',
+    title: 'BUG: Show full HMV call details after AI approval',
+    status: 'Triage', priority: 'Urgent', assignee: 'Moreno Antunes',
+    url: 'https://linear.app/traba/issue/ENG-18775',
+    rec: 'pending', recCat: 'A',
+    recNote: 'HMV step granularity — full call details disappear after AI approval. Could also be C (bug); leaning A since it’s about what status surface exposes.',
+    desc: "After the AI interpretation is approved, the full details of the HMV (human vetting) call are no longer visible. The feedback view should allow access to those details when clicked."
+  },
+  {
+    id: 'ENG-19057',
+    title: 'Background check status and push actions are inconsistent',
+    status: 'Todo', priority: 'High', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19057',
+    rec: 'pending', recCat: 'A',
+    recNote: 'BGC status wording mismatch (OCC vs Console) + push buttons disabled when they shouldn’t be. Direct status-granularity work.',
+    desc: "Background check status in OCC should use the same wording as Ops Console, including showing `Not Started` instead of `Invitation Created` when applicable.\n\nThere are cases where a worker appears to have a not-started background check, but `Push in App` and `Push and Lock App` remain disabled."
+  },
+  {
+    id: 'ENG-18890',
+    title: 'BGC in pipeline is not showing the right status and mark as qualified is not working',
+    status: 'Todo', priority: 'High', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-18890',
+    rec: 'pending', recCat: 'A',
+    recNote: 'BGC pipeline status wrong + mark-as-qualified broken. Direct hit on BGC granularity (or C bug).',
+    desc: "BGC in pipeline is not showing the right status and mark as qualified is not working."
+  },
+  {
+    id: 'ENG-18649',
+    title: 'Feat: Create a rejected worker view with explanations for why they were rejected',
+    status: 'Todo', priority: 'High', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-18649',
+    rec: 'pending', recCat: 'A',
+    recNote: 'Rejection reasons / explanations — granular status on disqualifications. Could also be D (filtering) for the view itself; leaning A on the explanation/why surface.',
+    desc: "Worker's application is still in progress even after we disqualified them at the recruiter phone call step. Where does worker go when they are disqualified from recruiter phone call step? Should be automatically moved to rejected bucket and disappear from other pipeline steps. Also: surface explanation for WHY rejected."
+  },
+  {
+    id: 'ENG-19131',
+    title: 'Flag non-clear worker BGC statuses in OCC',
+    status: 'Todo', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19131',
+    rec: 'pending', recCat: 'A',
+    recNote: 'BGC status granularity — only Clear/Eligible green, Review orange, everything else red. Lets ops approve/deny from OCC.',
+    desc: "If a worker’s BGC status is anything other than Clear and eligible, it should be flagged in OCC, including Review, so operators can approve or deny it from OCC.\n\nOnly clear or eligible is green, everything else is orange/yellow (review) or red (everything else — pre/post adverse, etc.)"
+  },
+  {
+    id: 'ENG-19742',
+    title: 'Add worker BGC link in side panel',
+    status: 'Triage', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19742',
+    rec: 'pending', recCat: 'A',
+    recNote: 'BGC link in side panel under Background Check section. Pairs with ENG-19483 (BGC link in pipeline flow) — consider merging.',
+    desc: "Put the link for the worker BGC in the worker side panel under the **Background Check** section."
+  },
+  {
+    id: 'ENG-19483',
+    title: 'Add background check link to pipeline flow',
+    status: 'Triage', priority: 'Medium', assignee: 'Will Thomas',
+    url: 'https://linear.app/traba/issue/ENG-19483',
+    rec: 'pending', recCat: 'A',
+    recNote: 'BGC link in pipeline flow surface. Likely dup-ish with ENG-19742 (side panel) — different surfaces but same intent. Consider merging or splitting clearly.',
+    desc: "Request to add the background check link in the pipeline flow. Screenshot shows the candidate pipeline with a Background Check step."
+  },
+  {
+    id: 'ENG-19129',
+    title: 'Remove waive functionality from OCC-owned ATS steps',
+    status: 'Todo', priority: 'Medium', assignee: 'Moreno Antunes',
+    url: 'https://linear.app/traba/issue/ENG-19129',
+    rec: 'pending', recCat: 'A',
+    recNote: 'Remove waive option for OCC-owned steps — simplifies status surface, removes an action that shouldn’t apply.',
+    desc: "Remove waive functionality from ATS for all steps that fall under Ops Control Center ownership."
+  },
+  {
+    id: 'ENG-19064',
+    title: 'Create a Generic Drug-Test Requirement',
+    status: 'In Progress', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19064',
+    rec: 'pending', recCat: 'A',
+    recNote: 'Reduces drug-test type sprawl — one generic requirement supports lab OR urgent care. Status granularity simplification.',
+    desc: "Workers can take either an urgent-care drug test or a standard CNET test at Labcorp. Add a generic-test requirement to support that case.\n\nRollout then iterate — initial version is just going to fallback to the field drug test."
+  },
+  {
+    id: 'ENG-19705',
+    title: 'Support delayed drug test completion without blocking eligibility',
+    status: 'Triage', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19705',
+    rec: 'pending', recCat: 'A',
+    recNote: 'Drug-test status granularity — new "delayed/waiver" state so worker can start without blocking on DT.',
+    desc: "Some businesses require a drug test to be completed by the end of the first week rather than before the first shift. The flow should support tracking completion without blocking eligibility up front, with a time-limited waiver similar to a temporary BGC waiver and removal from the shift if the requirement is not completed by the deadline."
+  },
+
+  // ============================================================
+  // AUTOMATION / INTEGRATION (category B)
+  // ============================================================
+  {
+    id: 'ENG-18961',
+    title: 'Export On-Schedule Workers to CSV',
+    status: 'Todo', priority: 'Urgent', assignee: 'Moreno Antunes',
+    url: 'https://linear.app/traba/issue/ENG-18961',
+    rec: 'pending', recCat: 'B',
+    recNote: 'One-click CSV export per target schedule. Replaces manual spreadsheet send to biz.',
+    desc: "Businesses ask Operators to send the list of workers who will be showing up for their first work shift in a spreadsheet. Automate this: Operators click a single button to download a spreadsheet for each target schedule. If no workers are selected, auto-add all workers who have never completed a shift in their target schedule at the business."
+  },
+  {
+    id: 'ENG-19768',
+    title: 'Automate worker schedule transitions after training period',
+    status: 'Todo', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19768',
+    rec: 'pending', recCat: 'B',
+    recNote: 'Big automation feature — workers move through training → regular schedule automatically based on readiness.',
+    desc: "Enterprise customers often need a worker to train on one schedule for a fixed period and then transition to a regular schedule. The start date can be dynamic based on worker readiness, so the schedule should start when the worker is ready and move through the defined phases automatically without manually creating schedules, extending end dates, or moving the candidate between schedules.\n\nThe schedule differences can include days of week, start or end times, and occasionally location."
+  },
+  {
+    id: 'ENG-19743',
+    title: 'Add button to link ghost worker to existing account',
+    status: 'In Progress', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19743',
+    rec: 'pending', recCat: 'B',
+    recNote: 'Ghost→worker linking — automation/integration affordance in the side panel.',
+    desc: "Add a button in the worker side panel, under the Go to OpenPhone button, to link a ghost worker to an existing account."
+  },
+  {
+    id: 'ENG-18959',
+    title: 'Auto-Import Applications from Previously Viewed Schedule',
+    status: 'In Progress', priority: 'Low', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-18959',
+    rec: 'pending', recCat: 'B',
+    recNote: 'QOL automation — browser-side caching so the last imported apps per schedule are remembered.',
+    desc: "QOL ask: automatically import applications for a schedule based on what was imported the last time the user had looked at that schedule in the Ops Control Centre.\n\nThis probably requires user-scoped, browser-side caching."
+  },
+
+  // ============================================================
+  // BUGS (category C)
+  // ============================================================
+  {
+    id: 'ENG-19466',
+    title: 'Fix import requirements importing in the wrong order',
+    status: 'Backlog', priority: 'Urgent', assignee: 'Will Thomas',
+    url: 'https://linear.app/traba/issue/ENG-19466',
+    rec: 'pending', recCat: 'C',
+    recNote: 'Urgent bug. Verify if still reproduces after the flow restructure landed — import code path now goes through ShiftRequestRequirementConstraint per-row chain.',
+    desc: "Import requirements keep importing in the wrong order."
+  },
+  {
+    id: 'ENG-19424',
+    title: 'OCC shows unapproved candidates as qualified',
+    status: 'Todo', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19424',
+    rec: 'pending', recCat: 'C',
+    recNote: 'OCC/ATS count mismatch bug — OCC shows 10 qualified, ATS shows 4. Could also be D (filtering).',
+    desc: "When filtering candidates with Recruiter Interview approved, OCC shows more candidates than ATS. In the reported example: ATS shows 4 qualified, OCC shows 10. Some worker applications appear approved in OCC even though ATS shows no feedback."
+  },
+  {
+    id: 'ENG-19662',
+    title: 'Static training dates only post the first day',
+    status: 'Todo', priority: 'Medium', assignee: 'Will Thomas',
+    url: 'https://linear.app/traba/issue/ENG-19662',
+    rec: 'pending', recCat: 'C',
+    recNote: 'Multi-day static training posts only day 1 — discrete bug.',
+    desc: "Posting static dates for multi-day training or orientation only posts the first day instead of all selected days. Reported when trying to post a 3-day QCD training."
+  },
+  {
+    id: 'ENG-19177',
+    title: 'Scheduling modal shows no upcoming shifts for some workers',
+    status: 'Triage', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19177',
+    rec: 'pending', recCat: 'C',
+    recNote: 'Scheduling flow blocked by "No upcoming shifts found" modal — bug.',
+    desc: "On the Ops Control Center view, opening the schedule flow for three workers shows a modal with `No upcoming shifts found for this schedule`, which prevents continuing. Affected workers linked in thread."
+  },
+
+  // ============================================================
+  // FILTERING / OCC (category D)
+  // ============================================================
+  {
+    id: 'ENG-19320',
+    title: 'Track worker progression at the shift request level',
+    status: 'In Progress', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19320',
+    rec: 'pending', recCat: 'D',
+    recNote: '★ This is your "view SR-level pipelines instead of aggregating to schedule" ask. Already in progress.',
+    desc: "Display a worker's target shift request instead of target schedule in the worker table. This would better visualize worker paths for schedules with multiple shift requests. Additionally display each unique pipeline for the shift requests in a schedule (deduplicate the pipelines) in the flows section."
+  },
+  {
+    id: 'ENG-19690',
+    title: 'Update pipeline view to stacked status columns',
+    status: 'In Progress', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19690',
+    rec: 'pending', recCat: 'D',
+    recNote: '★ This is your "pipeline counts broken down into in-progress/failed/approved" ask. Already in progress.',
+    desc: "Pipeline view should use stacked columns for Rejected, In progress, and Approved.\n\nAggregate count at top, count per bucket when you hover on the bar. Rejected on bottom (red), In progress above that (current blue), Completed at top (green).\n\nShift ready and on schedule remain untouched. Counts should be per step."
+  },
+  {
+    id: 'ENG-19794',
+    title: 'Make account pipeline status easier to understand',
+    status: 'Todo', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19794',
+    rec: 'pending', recCat: 'D',
+    recNote: 'Multi-role account-level pipeline view — pairs with ENG-19320 (SR level). New ticket, fresh from 5/26.',
+    desc: "In OCC, it is hard to understand the first-mile status for an account when there are multiple roles to fill for a business. To find the correct pipeline setup today requires asking which target schedule is being used and which applications/ATSs should be added to see the full worker pool. Hard for stakeholders to understand status."
+  },
+  {
+    id: 'ENG-19770',
+    title: 'Pipeline advances to interview before AI call or HMV',
+    status: 'Todo', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19770',
+    rec: 'pending', recCat: 'D',
+    recNote: 'Pipeline state interpretation bug — interview shown as next when AI call hasn’t happened. Could also be C (bug); leaning D since it’s about OCC pipeline display logic.',
+    desc: "Workers can show the next step as interview when the background check is complete even though no AI call or HMV has been performed.\n\nIn the reported example, the worker view shows AI Vetting Call as not started and Background Check as clear, while filtering shows the selected step as Interview with prereq status pending."
+  },
+  {
+    id: 'ENG-18991',
+    title: 'Show Blocked and Early-Churn Workers in First Mile',
+    status: 'Todo', priority: 'High', assignee: 'Will Thomas',
+    url: 'https://linear.app/traba/issue/ENG-18991',
+    rec: 'pending', recCat: 'D',
+    recNote: 'First Mile should show blocked + early-churn workers. Related to ENG-19689 (drop step) — consider merging.',
+    desc: "At SPG Austin, eight workers were initially placed but only three remain. First Mile currently shows only the three still on the schedule, which misses workers who had worked an early shift but then fell out. It should be possible to see what happened to those early workers to help root-cause churn.\n\nBlocked workers also appear to be hidden from search and do not show up under the rejected tab."
+  },
+  {
+    id: 'ENG-19689',
+    title: 'Show workers at the step where they dropped',
+    status: 'Todo', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19689',
+    rec: 'pending', recCat: 'D',
+    recNote: 'Worker table needs a "drop step" surface — pairs with ENG-18991. Could merge.',
+    desc: "Worker table should show workers at the step where they dropped, if there is no drop at schedule."
+  },
+  {
+    id: 'ENG-19691',
+    title: 'Show schedule status and hover details by business',
+    status: 'Todo', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19691',
+    rec: 'pending', recCat: 'D',
+    recNote: 'Worker shows as "on schedule" for any business schedule + hover details. Worker table UX.',
+    desc: "If a worker is on any schedule for a business, show them as on schedule and show the schedule on hover."
+  },
+  {
+    id: 'ENG-19692',
+    title: 'Fix UX issues in filters and toggles',
+    status: 'Todo', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19692',
+    rec: 'pending', recCat: 'D',
+    recNote: 'Vague — should split into concrete tickets. General UX cleanup on filters/toggles.',
+    desc: "General UX fixes on filters and toggles."
+  },
+  {
+    id: 'ENG-19382',
+    title: 'Show current pipeline step first after app download',
+    status: 'Todo', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19382',
+    rec: 'pending', recCat: 'D',
+    recNote: 'Step view ordering — show next actionable step first instead of hardcoded W2/1099 onboarding at top.',
+    desc: "After a worker downloads the app, the step view should show the next actionable step first. In the reported case, the worker is effectively on the background check step and then interview, while W2 onboarding and 1099 onboarding should appear as pending since they are hardcoded at the end."
+  },
+  {
+    id: 'ENG-19128',
+    title: 'Change ATS buckets to Passed, Rejected, and Missed Calls',
+    status: 'Todo', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19128',
+    rec: 'pending', recCat: 'D',
+    recNote: 'ATS buckets rename in OCC. Small UX fix.',
+    desc: "Update the ATS buckets in OCC to use:\n• Passed\n• Rejected\n• Missed Calls"
+  },
+
+  // ============================================================
+  // FIRST MILE / REQUIREMENTS SETUP (category E)
+  // ============================================================
+  {
+    id: 'ENG-19381',
+    title: 'Support tagging interview shifts as cohorts',
+    status: 'In Review', priority: 'Urgent', assignee: 'Will Thomas',
+    url: 'https://linear.app/traba/issue/ENG-19381',
+    rec: 'pending', recCat: 'E',
+    recNote: 'Cohort tagging on interview shifts. Connects to interview scheduler. In Review now — close to landing.',
+    desc: "A linked shift should support being tagged as a cohort. There is also interest in connecting this with the interview scheduler so workers added to an interview shift or schedule can be surfaced here. For now, cohorts are the immediate use case."
+  },
+  {
+    id: 'ENG-18997',
+    title: 'Allow scheduling interviews more freely in Ops Control Center',
+    status: 'In Progress', priority: 'Urgent', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-18997',
+    rec: 'pending', recCat: 'E',
+    recNote: 'Loosen interview eligibility — currently disabled unless strict conditions met. Needs alignment on what eligibility should actually be.',
+    desc: "The Schedule Interview action in OCC is currently disabled unless selected workers meet a strict set of eligibility conditions. It should allow scheduling interviews more freely, especially when a resume has been sent to the biz step. Tara to dig in — what is the current eligibility and what should it be?"
+  },
+  {
+    id: 'ENG-19697',
+    title: '[Restructure flows] Follow-up: PostShift form writes per-constraint chain on SR creation',
+    status: 'Backlog', priority: 'High', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19697',
+    rec: 'pending', recCat: 'E',
+    recNote: 'Engineering follow-up to the 5-PR restructure — PostShift form needs to write per-constraint chain on SR creation.',
+    desc: "Follow-up from ENG-19669. The PostShift form's `blockedByPrevious` toggle no longer writes chain — it used to flow through bulk-create's legacy column, which dropped in PR 5. New SRs created via the PostShift form land with chainless constraints."
+  },
+  {
+    id: 'ENG-19696',
+    title: '[Restructure flows] Follow-up: expose per-constraint chain in shift-request constraints endpoint',
+    status: 'Backlog', priority: 'High', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19696',
+    rec: 'pending', recCat: 'E',
+    recNote: 'Engineering follow-up — expose per-constraint chain in GET /requirements/shift-request/:id/constraints.',
+    desc: "Follow-up from ENG-19669. The `GET /requirements/shift-request/:shiftRequestId/constraints` endpoint currently returns `Requirement[]`, which lost the per-constraint chain when the legacy `Requirement.dependsOnRequirementId` column dropped."
+  },
+  {
+    id: 'ENG-19663',
+    title: 'Allow OBs on pre-req 1M posts',
+    status: 'In Progress', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19663',
+    rec: 'pending', recCat: 'E',
+    recNote: 'OBs on pre-req 1M posts (orientations/trainings) — extends first-mile post creation.',
+    desc: "Pre-req 1M posts such as orientations and trainings should support adding OBs. Right now the flow only asks for slots in the schedule window.\n\nThe dynamic OB toggle also appears to turn on automatically, which seems incorrect."
+  },
+  {
+    id: 'ENG-19700',
+    title: 'Support either/or prerequisite paths in first mile',
+    status: 'Todo', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19700',
+    rec: 'pending', recCat: 'E',
+    recNote: 'Either/or paths (DT: saliva or lab, orientation: virtual or onsite). The "flows outside target schedule" capability gap you mentioned.',
+    desc: "Allow prerequisite flows to branch into either/or paths and merge back into a single step afterward. Examples mentioned include drug tests (saliva or lab), orientations (virtual or onsite), and document signing (in-app or onsite). Current behavior can make workers appear in multiple steps at the same time, which is confusing."
+  },
+  {
+    id: 'ENG-18705',
+    title: 'Interview Scheduler: Add interview locations to override scoped locations',
+    status: 'Todo', priority: 'Medium', assignee: 'Will Thomas',
+    url: 'https://linear.app/traba/issue/ENG-18705',
+    rec: 'pending', recCat: 'E',
+    recNote: 'Interview scheduler — allow interview locations distinct from requirement scoped locations.',
+    desc: "For interviews being created in the interview scheduler, the location of the interviews should not necessarily be the same as the scoped location for the requirement that they grant."
+  },
+  {
+    id: 'ENG-19434',
+    title: 'Add confirmation flow when archiving requirements',
+    status: 'In Review', priority: 'Medium', assignee: 'Tara L',
+    url: 'https://linear.app/traba/issue/ENG-19434',
+    rec: 'pending', recCat: 'E',
+    recNote: 'Confirmation modal when archiving a requirement that has granting shift requests. In Review — close to landing.',
+    desc: "When archiving a requirement that has granting shift requests, show a confirmation modal listing workers scheduled for the linked RSGRs. Require a decision for each linked RSGR before the requirement can be archived: either link it to another requirement of the same type or cancel the RSGR."
+  },
+];
+
+// =============================================================
+// State
+// =============================================================
+const state = {
+  queue: TICKETS.map((t, i) => ({...t, _idx: i})),
+  position: 0,
+  decisions: [], // { ticket, action: 'close'|'pending'|'skip', category?, note? }
+};
+
+// =============================================================
+// Rendering
+// =============================================================
+const deckEl = document.getElementById('deck');
+const counterEl = document.getElementById('counter');
+const progressFillEl = document.getElementById('progressFill');
+const resultsEl = document.getElementById('results');
+const mainEl = document.querySelector('main');
+
+function statusClass(s){ return 'status-' + s.replace(/\s/g,''); }
+
+function recBanner(rec, recCat) {
+  if (rec === 'done') return { cls: 'done', label: '✅ Looks done — verify & close', sub: '' };
+  if (rec === 'moot') return { cls: 'moot', label: '🌀 Likely moot — supersede', sub: '' };
+  if (rec === 'pending') return {
+    cls: 'pending',
+    label: '⏳ Pending',
+    sub: `Suggested: ${CATS[recCat].label}`
+  };
+}
+
+function cardHtml(t) {
+  const r = recBanner(t.rec, t.recCat);
+  const noteClass = t.rec === 'done' ? 'done' : (t.rec === 'moot' ? 'moot' : '');
+  return `
+    <div class="rec-banner ${r.cls}">
+      <span>${r.label}</span>
+      <small>${r.sub}</small>
+    </div>
+    <div class="card-body">
+      <div class="id-row">
+        <span class="ticket-id">${t.id}</span>
+        <span class="chip ${statusClass(t.status)}">${t.status}</span>
+        <span class="chip prio-${t.priority}">${t.priority}</span>
+      </div>
+      <h2 class="title">${escapeHtml(t.title)}</h2>
+      <div class="assignee">👤 ${escapeHtml(t.assignee)}</div>
+      <div class="rec-note ${noteClass}"><b>My read:</b> ${escapeHtml(t.recNote)}</div>
+      <div class="scroll-hint">↓ scroll for full description</div>
+      <div class="desc-label">Description</div>
+      <div class="desc">${escapeHtml(t.desc)}</div>
+      <a class="linear-link" href="${t.url}" target="_blank" rel="noopener">Open in Linear ↗</a>
+    </div>
+  `;
+}
+
+function escapeHtml(s) {
+  return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderDeck() {
+  deckEl.innerHTML = '';
+  for (let offset = 2; offset >= 0; offset--) {
+    const idx = state.position + offset;
+    if (idx >= state.queue.length) continue;
+    const t = state.queue[idx];
+    const card = document.createElement('div');
+    card.className = 'card' + (offset === 1 ? ' behind' : offset === 2 ? ' behind2' : '');
+    card.dataset.idx = idx;
+    card.innerHTML = cardHtml(t);
+    deckEl.appendChild(card);
+  }
+  counterEl.textContent = `${Math.min(state.position+1, state.queue.length)} / ${state.queue.length}`;
+  progressFillEl.style.width = ((state.position) / state.queue.length * 100) + '%';
+}
+
+function topCard() {
+  const cards = deckEl.querySelectorAll('.card:not(.behind):not(.behind2)');
+  return cards[0];
+}
+
+// =============================================================
+// Actions
+// =============================================================
+let pendingTicket = null; // ticket awaiting category pick
+let pickedCat = null;
+let inModal = false;
+
+function swipe(direction) {
+  if (inModal) return;
+  if (state.position >= state.queue.length) return;
+  const t = state.queue[state.position];
+
+  if (direction === 'left') {
+    // pending — open category modal
+    openModal(t);
+    return;
+  }
+  if (direction === 'right') {
+    finalizeClose(t);
+    return;
+  }
+  if (direction === 'skip') {
+    animateAndAdvance('left');
+    state.decisions.push({ ticket: t, action: 'skip' });
+    toast('Skipped');
+    return;
+  }
+}
+
+function finalizeClose(t) {
+  animateAndAdvance('right');
+  state.decisions.push({ ticket: t, action: 'close', rec: t.rec });
+  const label = t.rec === 'moot' ? 'Marked moot' : 'Marked done';
+  toast('✅ ' + label);
+}
+
+function finalizePending(t, cat, note) {
+  animateAndAdvance('left');
+  state.decisions.push({ ticket: t, action: 'pending', category: cat, note });
+  toast(`⏳ Pending → ${CATS[cat].label}`);
+}
+
+function animateAndAdvance(dir) {
+  const card = topCard();
+  if (card) card.classList.add('swipe-' + dir);
+  setTimeout(() => {
+    state.position++;
+    if (state.position >= state.queue.length) {
+      showResults();
+    } else {
+      renderDeck();
+    }
+  }, 280);
+}
+
+function undo() {
+  if (state.decisions.length === 0) return;
+  state.decisions.pop();
+  state.position = Math.max(0, state.position - 1);
+  resultsEl.classList.remove('show');
+  mainEl.querySelector('.deck').style.display = '';
+  document.querySelector('.controls').style.display = '';
+  document.querySelector('.help').style.display = '';
+  renderDeck();
+  toast('↶ Undone');
+}
+
+// =============================================================
+// Category modal
+// =============================================================
+const modal = document.getElementById('catModal');
+const catList = document.getElementById('catList');
+const noteInput = document.getElementById('noteInput');
+const catSubtitle = document.getElementById('catSubtitle');
+
+function openModal(t) {
+  pendingTicket = t;
+  pickedCat = t.recCat || null;
+  inModal = true;
+  modal.classList.add('show');
+  noteInput.value = '';
+  // highlight recommended
+  document.querySelectorAll('.cat-item').forEach(el => {
+    el.classList.toggle('recommended', el.dataset.cat === t.recCat);
+  });
+  catSubtitle.innerHTML = `<b>${t.id}</b> · Press <kbd style="background:#e5e7eb;padding:1px 6px;border-radius:4px;font-size:11px;">1-5</kbd> or click. Recommended: <b>${CATS[t.recCat]?.label || '—'}</b>. Enter to confirm.`;
+  setTimeout(() => noteInput.focus(), 50);
+}
+
+function pickCat(cat) {
+  pickedCat = cat;
+  document.querySelectorAll('.cat-item').forEach(el => {
+    el.classList.toggle('recommended', el.dataset.cat === cat);
+  });
+}
+
+function confirmCat() {
+  if (!pickedCat) {
+    toast('Pick a category (1-5)');
+    return;
+  }
+  const t = pendingTicket;
+  const note = noteInput.value.trim();
+  closeModal(true);
+  finalizePending(t, pickedCat, note);
+}
+
+function closeModal(silent) {
+  modal.classList.remove('show');
+  inModal = false;
+  pendingTicket = null;
+  pickedCat = null;
+  if (!silent) toast('Canceled');
+}
+
+// =============================================================
+// Results
+// =============================================================
+function showResults() {
+  mainEl.querySelector('.deck').style.display = 'none';
+  document.querySelector('.controls').style.display = 'none';
+  document.querySelector('.help').style.display = 'none';
+  resultsEl.classList.add('show');
+
+  const pending = state.decisions.filter(d => d.action === 'pending');
+  const close = state.decisions.filter(d => d.action === 'close');
+  const skipped = state.decisions.filter(d => d.action === 'skip');
+
+  // Group pending by category
+  const byCat = { A:[], B:[], C:[], D:[], E:[] };
+  pending.forEach(d => byCat[d.category].push(d));
+
+  const pendingHtml = Object.keys(byCat).map(cat => {
+    if (byCat[cat].length === 0) return '';
+    const items = byCat[cat].map(d => `
+      <div class="res-item" data-cat="${cat}">
+        <div style="flex:1;">
+          <div class="res-id">${d.ticket.id}</div>
+          <div class="res-title">${escapeHtml(d.ticket.title)}</div>
+          ${d.note ? `<div class="res-note">📝 ${escapeHtml(d.note)}</div>` : ''}
+        </div>
+      </div>`).join('');
+    return `<div style="margin-bottom:16px;">
+      <div style="font-size:12px; font-weight:700; text-transform:uppercase; opacity:0.7; margin-bottom:6px;">${CATS[cat].label} · ${byCat[cat].length}</div>
+      ${items}
+    </div>`;
+  }).join('');
+
+  const closeHtml = close.map(d => `
+    <div class="res-item">
+      <div style="flex:1;">
+        <div class="res-id">${d.ticket.id}</div>
+        <div class="res-title">${escapeHtml(d.ticket.title)}</div>
+        <div class="res-cat">${d.rec === 'moot' ? 'moot' : 'done'}</div>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('pendingList').innerHTML = pendingHtml || '<p style="color:#cbd5e1; font-size:13px;">Nothing pending.</p>';
+  document.getElementById('closeList').innerHTML = closeHtml || '<p style="color:#cbd5e1; font-size:13px;">Nothing to close.</p>';
+  document.getElementById('pendingHeading').textContent = `⏳ Pending (${pending.length})`;
+  document.getElementById('closeHeading').textContent = `✅ Close (${close.length})${skipped.length ? ` · ${skipped.length} skipped` : ''}`;
+}
+
+function copyResults(format) {
+  const pending = state.decisions.filter(d => d.action === 'pending');
+  const close = state.decisions.filter(d => d.action === 'close');
+  let text = '';
+  if (format === 'md') {
+    text += '## To close\n\n';
+    close.forEach(d => { text += `- [${d.ticket.id}](${d.ticket.url}) — ${d.ticket.title} _(${d.rec})_\n`; });
+    text += '\n## Pending — by category\n\n';
+    ['A','B','C','D','E'].forEach(cat => {
+      const items = pending.filter(d => d.category === cat);
+      if (!items.length) return;
+      text += `### ${CATS[cat].label}\n\n`;
+      items.forEach(d => {
+        text += `- [${d.ticket.id}](${d.ticket.url}) — ${d.ticket.title}`;
+        if (d.note) text += ` _(${d.note})_`;
+        text += '\n';
+      });
+      text += '\n';
+    });
+  } else {
+    // CSV
+    text = 'id,title,action,category,note,url\n';
+    state.decisions.forEach(d => {
+      const row = [d.ticket.id, d.ticket.title, d.action, d.category || '', d.note || '', d.ticket.url]
+        .map(c => `"${String(c).replace(/"/g, '""')}"`).join(',');
+      text += row + '\n';
+    });
+  }
+  navigator.clipboard.writeText(text).then(() => toast('📋 Copied!'));
+}
+
+// =============================================================
+// Keyboard
+// =============================================================
+document.addEventListener('keydown', (e) => {
+  if (inModal) {
+    if (e.key >= '1' && e.key <= '5') {
+      const map = { '1':'A','2':'B','3':'C','4':'D','5':'E' };
+      pickCat(map[e.key]);
+      e.preventDefault();
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      confirmCat();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeModal();
+    }
+    return;
+  }
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); swipe('left'); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); swipe('right'); }
+  else if (e.key === 's' || e.key === 'S') { e.preventDefault(); swipe('skip'); }
+  else if (e.key === 'u' || e.key === 'U') { e.preventDefault(); undo(); }
+  else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    // scroll the top card body
+    const card = topCard();
+    if (card) {
+      const body = card.querySelector('.card-body');
+      body.scrollBy({ top: e.key === 'ArrowDown' ? 80 : -80, behavior: 'smooth' });
+      e.preventDefault();
+    }
+  }
+});
+
+document.getElementById('undoBtn').addEventListener('click', undo);
+
+// =============================================================
+// Toast
+// =============================================================
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1500);
+}
+
+// =============================================================
+// Init
+// =============================================================
+renderDeck();
+</script>
+</body>
+</html>

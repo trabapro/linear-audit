@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0f0e1a;
+  --color-accent: #ff4d8d;
+  --color-done: #10b981;
+  --color-pending: #f59e0b;
+  --font-display: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html, body, #root { height: 100%; }
+body {
+  background:
+    radial-gradient(at 20% 20%, #ff7eb3 0%, transparent 50%),
+    radial-gradient(at 80% 30%, #ffb86c 0%, transparent 50%),
+    radial-gradient(at 50% 90%, #8b5cf6 0%, transparent 50%),
+    #0f0e1a;
+  background-attachment: fixed;
+  min-height: 100vh;
+  font-family: var(--font-display);
+}
+
+/* Card stack swipe animations */
+.card-swipe-left {
+  transform: translate(-120%, -10%) rotate(-18deg);
+  opacity: 0;
+  transition: transform 0.3s cubic-bezier(.2,.8,.2,1), opacity 0.3s;
+}
+.card-swipe-right {
+  transform: translate(120%, -10%) rotate(18deg);
+  opacity: 0;
+  transition: transform 0.3s cubic-bezier(.2,.8,.2,1), opacity 0.3s;
+}
