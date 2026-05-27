@@ -4,6 +4,7 @@ import { useAudit } from '@/state/AuditContext';
 import { recommend, type Recommendation } from '@/lib/recommend';
 import { SwipeCard } from './SwipeCard';
 import { CategoryModal } from './CategoryModal';
+import { CancelModal } from './CancelModal';
 import type { AuditDecision, ActionResult } from '@linear-audit/shared';
 
 type SwipeAnim = 'left' | 'right' | null;
@@ -11,6 +12,7 @@ type SwipeAnim = 'left' | 'right' | null;
 export function SwipeScreen() {
   const audit = useAudit();
   const [modalOpen, setModalOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
   const [anim, setAnim] = useState<SwipeAnim>(null);
   const [history, setHistory] = useState<{ decision: AuditDecision; result: ActionResult }[]>([]);
   const topRef = useRef<HTMLDivElement | null>(null);
@@ -29,7 +31,7 @@ export function SwipeScreen() {
 
   // Keyboard
   useEffect(() => {
-    if (modalOpen) return;
+    if (modalOpen || cancelOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
@@ -37,6 +39,9 @@ export function SwipeScreen() {
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         commitClose();
+      } else if (e.key === 'x' || e.key === 'X') {
+        e.preventDefault();
+        beginCancel();
       } else if (e.key === 's' || e.key === 'S') {
         e.preventDefault();
         commitSkip();
@@ -61,6 +66,23 @@ export function SwipeScreen() {
 
   function beginPending() {
     setModalOpen(true);
+  }
+
+  function beginCancel() {
+    setCancelOpen(true);
+  }
+
+  async function commitCancel(reason: string) {
+    setCancelOpen(false);
+    const decision: AuditDecision = {
+      issueId: current!.id,
+      identifier: current!.identifier,
+      action: 'cancel',
+      note: reason || undefined,
+      decidedAt: new Date().toISOString(),
+      recommendation: { action: rec?.action ?? 'pending', note: rec?.rationale },
+    };
+    await runDecision(decision, 'right');
   }
 
   async function commitClose() {
@@ -188,13 +210,20 @@ export function SwipeScreen() {
           )}
         </div>
 
-        <div className="mt-5 flex justify-center gap-4">
+        <div className="mt-5 flex flex-wrap justify-center gap-3">
           <button
             type="button"
             onClick={beginPending}
             className="rounded-xl bg-gradient-to-br from-amber-500 to-rose-500 px-5 py-3 text-sm font-bold text-white shadow-lg"
           >
             ← Pending
+          </button>
+          <button
+            type="button"
+            onClick={beginCancel}
+            className="rounded-xl bg-gradient-to-br from-rose-600 to-rose-700 px-5 py-3 text-sm font-bold text-white shadow-lg"
+          >
+            ✗ Cancel (X)
           </button>
           <button
             type="button"
@@ -212,7 +241,7 @@ export function SwipeScreen() {
           </button>
         </div>
         <p className="mt-2 text-center text-xs text-slate-400">
-          ← pending · → close · ↑↓ scroll · S skip · U undo · 1-9 categories in modal
+          ← pending · → close · X cancel · ↑↓ scroll · S skip · U undo · 1-9 categories in modal
         </p>
       </main>
 
@@ -228,6 +257,13 @@ export function SwipeScreen() {
         identifier={current.identifier}
         onConfirm={commitPending}
         onCancel={() => setModalOpen(false)}
+      />
+
+      <CancelModal
+        open={cancelOpen}
+        identifier={current.identifier}
+        onConfirm={commitCancel}
+        onCancel={() => setCancelOpen(false)}
       />
     </div>
   );
