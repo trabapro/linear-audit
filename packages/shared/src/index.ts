@@ -34,6 +34,13 @@ export interface LinearUser {
   displayName: string;
 }
 
+export interface LinearIssueRef {
+  id: string;
+  identifier: string;
+  title: string;
+  url: string;
+}
+
 export interface LinearIssue {
   id: string;
   identifier: string;
@@ -51,6 +58,15 @@ export interface LinearIssue {
   labels: string[];
   createdAt: string;
   updatedAt: string;
+  /** Parent issue, if this is a sub-issue. Pulled from Linear regardless of audit scope. */
+  parent: LinearIssueRef | null;
+  /**
+   * Number of open child issues that are present in the current audit set
+   * (same project + open workflow state). Computed server-side after the
+   * issue list is fetched, so it reflects what the user will actually see
+   * in the deck — not Linear's total child count.
+   */
+  childrenInScope: number;
 }
 
 // User-defined category. The label is what's prefixed to ticket titles.

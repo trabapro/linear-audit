@@ -37,7 +37,27 @@ export function SwipeCard({ issue, rec, className = '' }: Props) {
           <span className="font-mono text-slate-500">{issue.identifier}</span>
           <Chip label={issue.state.name} tone={stateTone(issue.state.type)} />
           <Chip label={issue.priorityLabel} tone={priorityTone(issue.priority)} />
+          {issue.childrenInScope > 0 && (
+            <Chip
+              label={`↓ ${issue.childrenInScope} subtask${issue.childrenInScope === 1 ? '' : 's'}`}
+              tone="bg-violet-100 text-violet-800"
+            />
+          )}
         </div>
+
+        {issue.parent && (
+          <a
+            href={issue.parent.url}
+            target="_blank"
+            rel="noreferrer"
+            className="mb-2 inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-200"
+            title={issue.parent.title}
+          >
+            <span className="opacity-50">↳ child of</span>
+            <span className="font-mono font-semibold">{issue.parent.identifier}</span>
+            <span className="max-w-[200px] truncate opacity-70">— {issue.parent.title}</span>
+          </a>
+        )}
 
         <h2 className="mb-1 text-xl font-bold leading-snug tracking-tight">{issue.title}</h2>
         <p className="mb-4 text-xs text-slate-500">

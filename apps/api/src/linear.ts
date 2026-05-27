@@ -131,6 +131,12 @@ const ISSUE_FIELDS = /* GraphQL */ `
       name
     }
   }
+  parent {
+    id
+    identifier
+    title
+    url
+  }
   createdAt
   updatedAt
 `;
@@ -146,11 +152,12 @@ interface RawIssue {
   state: { id: string; name: string; type: LinearWorkflowStateType };
   assignee: (LinearUser & { displayName: string }) | null;
   labels: { nodes: Array<{ name: string }> };
+  parent: { id: string; identifier: string; title: string; url: string } | null;
   createdAt: string;
   updatedAt: string;
 }
 
-function shapeIssue(raw: RawIssue): LinearIssue {
+function shapeIssue(raw: RawIssue, childrenInScope: number): LinearIssue {
   return {
     id: raw.id,
     identifier: raw.identifier,
@@ -162,6 +169,8 @@ function shapeIssue(raw: RawIssue): LinearIssue {
     state: raw.state,
     assignee: raw.assignee,
     labels: raw.labels.nodes.map((n) => n.name),
+    parent: raw.parent,
+    childrenInScope,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
   };
@@ -194,7 +203,23 @@ export async function listOpenIssues(
     `,
     { filter },
   );
-  return data.issues.nodes.map(shapeIssue);
+
+  // Build a "how many of my children are also in the open set?" map.
+  // We only count children that appear in the same audit scope — that's
+  // what the user will actually see swiped, so it's the meaningful count.
+  const childCountByParentId = new Map<string, number>();
+  for (const raw of data.issues.nodes) {
+    if (raw.parent) {
+      childCountByParentId.set(
+        raw.parent.id,
+        (childCountByParentId.get(raw.parent.id) ?? 0) + 1,
+      );
+    }
+  }
+
+  return data.issues.nodes.map((raw) =>
+    shapeIssue(raw, childCountByParentId.get(raw.id) ?? 0),
+  );
 }
 
 // =============================================================
