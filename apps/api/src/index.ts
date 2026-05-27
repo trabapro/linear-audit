@@ -21,6 +21,7 @@ import {
   updateIssueTitle,
   whoami,
 } from './linear';
+import { distillCategories } from './distill';
 
 const app = new Hono();
 
@@ -76,6 +77,31 @@ app.get('/api/issues', async (c) => {
     return c.json(issues);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+// -----------------------------------------------------------------
+// Distill free-text goals into categories.
+// -----------------------------------------------------------------
+
+app.post('/api/distill-categories', async (c) => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return c.json({ error: 'ANTHROPIC_API_KEY not configured on the server' }, 503);
+  }
+  let body: { text?: string };
+  try {
+    body = (await c.req.json()) as { text?: string };
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+  if (!body.text || !body.text.trim()) {
+    return c.json({ error: 'text is required' }, 400);
+  }
+  try {
+    const categories = await distillCategories(body.text);
+    return c.json({ categories });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
   }
 });
 
@@ -174,7 +200,7 @@ if (process.env.NODE_ENV === 'production') {
   app.use('*', serveStatic({ path: '../web/dist/index.html' }));
 }
 
-const port = Number.parseInt(process.env.PORT ?? '3000', 10);
+const port = Number.parseInt(process.env.PORT ?? '3030', 10);
 console.log(`linear-audit api listening on :${port}`);
 
 export default {

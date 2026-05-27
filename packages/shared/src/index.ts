@@ -14,7 +14,7 @@ export type LinearPriority = 0 | 1 | 2 | 3 | 4;
 export interface LinearProject {
   id: string;
   name: string;
-  slug: string;
+  slugId: string;
   description: string | null;
   url: string;
 }

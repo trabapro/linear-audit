@@ -56,16 +56,16 @@ export async function whoami(pat: string): Promise<LinearUser> {
 
 export async function listProjects(pat: string): Promise<LinearProject[]> {
   const data = await linearGql<{
-    projects: { nodes: Array<LinearProject & { state: string }> };
+    projects: { nodes: Array<LinearProject & { state?: string }> };
   }>(
     pat,
     /* GraphQL */ `
       query Projects {
-        projects(first: 100, orderBy: updatedAt, filter: { state: { neq: "completed" } }) {
+        projects(first: 100, orderBy: updatedAt) {
           nodes {
             id
             name
-            slug
+            slugId
             description
             url
             state
@@ -74,7 +74,8 @@ export async function listProjects(pat: string): Promise<LinearProject[]> {
       }
     `,
   );
-  return data.projects.nodes;
+  // Filter to non-completed projects client-side (state filter API has changed).
+  return data.projects.nodes.filter((p) => p.state !== 'completed');
 }
 
 export async function listMilestones(pat: string, projectId: string): Promise<LinearMilestone[]> {

@@ -53,4 +53,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ decision, categories, currentTitle }),
     }),
+  distillCategories: (text: string) =>
+    call<{ categories: AuditCategory[] }>('/api/distill-categories', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    }),
 };

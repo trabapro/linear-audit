@@ -16,6 +16,11 @@ export function SetupScreen() {
   const [loadingIssues, setLoadingIssues] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [newCategoryLabel, setNewCategoryLabel] = useState('');
+  const [goalsText, setGoalsText] = useState<string>(
+    () => localStorage.getItem('linear-audit:goals') ?? '',
+  );
+  const [distilling, setDistilling] = useState(false);
+  const [distillErr, setDistillErr] = useState<string | null>(null);
 
   // Auto-load projects once PAT is verified.
   useEffect(() => {
@@ -155,31 +160,78 @@ export function SetupScreen() {
       {/* Step 3: Categories */}
       <Section step="3" title="Set your categories" disabled={!projectId}>
         <p className="mb-3 text-sm text-slate-400">
-          These get prefixed to the ticket title when you left-swipe. You can also add new ones on the fly while swiping.
+          These get prefixed to the ticket title when you left-swipe. Add, remove, or distill from free-text goals — anything goes.
         </p>
+
+        {/* Distill from free text */}
+        <div className="mb-4 rounded-xl border border-pink-500/30 bg-pink-500/5 p-3">
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-pink-300">
+            ✨ Distill from your goals
+          </div>
+          <textarea
+            value={goalsText}
+            onChange={(e) => setGoalsText(e.target.value)}
+            placeholder="e.g. 'My P0 is shipping the new auth flow. P1 is reducing flaky tests. P2 is migrating off Stripe.' — Claude turns this into categories."
+            className="min-h-[72px] w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm focus:border-pink-400 focus:outline-none"
+          />
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span className="text-xs text-slate-500">
+              {distillErr ? <span className="text-rose-400">{distillErr}</span> : 'Replaces your current category list.'}
+            </span>
+            <button
+              type="button"
+              disabled={!goalsText.trim() || distilling}
+              onClick={async () => {
+                setDistilling(true);
+                setDistillErr(null);
+                try {
+                  const { categories } = await api.distillCategories(goalsText);
+                  if (categories.length === 0) {
+                    setDistillErr('No categories distilled — try adding more detail.');
+                  } else {
+                    audit.setCategories(categories);
+                    localStorage.setItem('linear-audit:goals', goalsText);
+                  }
+                } catch (e) {
+                  setDistillErr((e as Error).message);
+                } finally {
+                  setDistilling(false);
+                }
+              }}
+              className="rounded-lg bg-pink-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-pink-400 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {distilling ? 'Distilling…' : 'Distill ✨'}
+            </button>
+          </div>
+        </div>
+
         <div className="flex flex-wrap gap-2">
           {audit.categories.map((c) => (
             <span
               key={c.id}
               className="flex items-center gap-2 rounded-full bg-slate-800/80 px-3 py-1 text-xs font-medium"
               style={{ borderLeft: `4px solid ${c.color ?? '#8b5cf6'}` }}
+              title={c.description}
             >
               {c.emoji && <span>{c.emoji}</span>}
               {c.label}
-              {c.isCustom && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    audit.setCategories(audit.categories.filter((cc) => cc.id !== c.id))
-                  }
-                  className="opacity-60 hover:opacity-100"
-                  aria-label="Remove"
-                >
-                  ✕
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() =>
+                  audit.setCategories(audit.categories.filter((cc) => cc.id !== c.id))
+                }
+                className="opacity-60 hover:opacity-100"
+                aria-label="Remove"
+              >
+                ✕
+              </button>
             </span>
           ))}
+          {audit.categories.length === 0 && (
+            <span className="text-xs text-slate-500">
+              No categories yet — distill from goals above, or add one below.
+            </span>
+          )}
         </div>
         <div className="mt-3 flex gap-2">
           <input
@@ -192,7 +244,7 @@ export function SetupScreen() {
                 setNewCategoryLabel('');
               }
             }}
-            placeholder="Add a category (e.g. ats-cleanup) — Enter to add"
+            placeholder="Add a category — Enter to add"
             className="flex-1 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm focus:border-pink-400 focus:outline-none"
           />
           <button
