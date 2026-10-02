@@ -41,8 +41,9 @@ export async function distillCategories(freeText: string): Promise<AuditCategory
   const anthropic = getClient();
 
   const message = (await anthropic.messages.create({
-    model: 'claude-opus-4-7',
+    model: 'claude-opus-5',
     max_tokens: 1024,
+    thinking: { type: 'disabled' },
     system: [
       {
         type: 'text',
